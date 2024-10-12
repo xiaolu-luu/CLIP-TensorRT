@@ -1,93 +1,105 @@
-# CLIP-ONNX
-It is a simple library to speed up CLIP inference up to 3x (K80 GPU)!
+# CLIP-TensorRT
+This is a simple repository for accelerating CLIP inference using TensorRT, which includes directly converting the ONNX model to a TRT inference engine, as well as importing a self-written **LayerNorm** Plugin to achieve inference acceleration.
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Lednik7/CLIP-ONNX/blob/main/examples/readme_example.ipynb)
-Open AI CLIP
+**CLIP** model is a multimodal pre-trained neural network, which is an efficient and scalable method for learning from natural language supervision. The core idea of the model is to use a large number of image and text pairing data for pre-training to learn the alignment relationship between image and text. CLIP model has two modes, one is text mode, one is visual mode, including two main parts:
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Lednik7/CLIP-ONNX/blob/main/examples/RuCLIP_onnx_example.ipynb)
-RuCLIP Example
+1. **Text Encoder**: Used to convert text into a low-dimensional vector.
+2. **Image Encoder**: It is used to transform the image into a similar vector representation.
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Lednik7/CLIP-ONNX/blob/main/examples/ru_CLIP_tiny_onnx.ipynb)
-RuCLIP tiny Example
+
+![](CLIP.png)
+
+
+In the prediction phase, the CLIP model generates predictions by calculating the **cosine similarity (CS)** between text and image vectors.
+
+
+<table>
+    <tr>
+        <td>
+            <div style="position: relative; width: 100%;">
+                <img src="clip_trt/image/cat1.jpg" width="100%" style="height: 200px; object-fit: cover;">
+                <div style="position: absolute; bottom: 0; width: 100%; background: rgba(0,0,0,0.5); color: white; padding: 5px;">
+                    <p>Cat</p>
+                    <p>CS: 98%</p>
+                </div>
+            </div>
+        </td>
+        <td>
+            <div style="position: relative; width: 100%;">
+                <img src="clip_trt/image/dog1.jpg" width="100%" style="height: 200px; object-fit: cover;">
+                <div style="position: absolute; bottom: 0; width: 100%; background: rgba(0,0,0,0.5); color: white; padding: 5px;">
+                    <p>Dog</p>
+                    <p>CS: 99%</p>
+                </div>
+            </div>
+        </td>
+        <td>
+            <div style="position: relative; width: 100%;">
+                <img src="clip_trt/image/chicken1.jpg" width="100%" style="height: 200px; object-fit: cover;">
+                <div style="position: absolute; bottom: 0; width: 100%; background: rgba(0,0,0,0.5); color: white; padding: 5px;">
+                    <p>Chicken</p>
+                    <p>CS: 97%</p>
+                </div>
+            </div>
+        </td>
+        <td>
+            <div style="position: relative; width: 100%;">
+                <img src="clip_trt/image/people1.jpg" width="100%" style="height: 200px; object-fit: cover;">
+                <div style="position: absolute; bottom: 0; width: 100%; background: rgba(0,0,0,0.5); color: white; padding: 5px;">
+                    <p>People</p>
+                    <p>CS: 98%</p>
+                </div>
+            </div>
+        </td>
+    </tr>
+</table>
+
+## Requirements
+
+We have tested it on CUDA 12.1 ,TensorRT 8.6.1 ,ONNX 1.17.0 ,onnxruntime 1.13.1 .
 
 ## Usage
-Install clip-onnx module and requirements first. Use this trick
-```python3
-!pip install git+https://github.com/Lednik7/CLIP-ONNX.git
-!pip install git+https://github.com/openai/CLIP.git
-!pip install onnxruntime-gpu
-```
-## Example in 3 steps
-0. Download CLIP image from repo
-```python3
-!wget -c -O CLIP.png https://github.com/openai/CLIP/blob/main/CLIP.png?raw=true
-```
-1. Load standard CLIP model, image, text on cpu
-```python3
-import clip
-from PIL import Image
-import numpy as np
 
-# onnx cannot work with cuda
-model, preprocess = clip.load("ViT-B/32", device="cpu", jit=False)
+Export the visual encoder and text encoder of CLIP to the `clip_visual.onnx` file and `clip_textual.onnx`, respectively
 
-# batch first
-image = preprocess(Image.open("CLIP.png")).unsqueeze(0).cpu() # [1, 3, 224, 224]
-image_onnx = image.detach().cpu().numpy().astype(np.float32)
-
-# batch first
-text = clip.tokenize(["a diagram", "a dog", "a cat"]).cpu() # [3, 77]
-text_onnx = text.detach().cpu().numpy().astype(np.int32)
-```
-2. Create CLIP-ONNX object to convert model to onnx
-```python3
-from clip_onnx import clip_onnx
-
-visual_path = "clip_visual.onnx"
-textual_path = "clip_textual.onnx"
-
-onnx_model = clip_onnx(model, visual_path=visual_path, textual_path=textual_path)
-onnx_model.convert2onnx(image, text, verbose=True)
-# ['TensorrtExecutionProvider', 'CUDAExecutionProvider', 'CPUExecutionProvider']
-onnx_model.start_sessions(providers=["CPUExecutionProvider"]) # cpu mode
-```
-3. Use for standard CLIP API. Batch inference
-```python3
-image_features = onnx_model.encode_image(image_onnx)
-text_features = onnx_model.encode_text(text_onnx)
-
-logits_per_image, logits_per_text = onnx_model(image_onnx, text_onnx)
-probs = logits_per_image.softmax(dim=-1).detach().cpu().numpy()
-
-print("Label probs:", probs)  # prints: [[0.9927937  0.00421067 0.00299571]]
+```bash
+git clone https://github.com/xiaolu-luu/CLIP-TensorRT.git
+python clip_onnx_export.py
 ```
 
-**Enjoy the speed**
+### Running Foundational CLIP-TensorRT
 
-## Load saved model
-Example for ViT-B/32 from Model Zoo
-```python3
-!wget https://clip-as-service.s3.us-east-2.amazonaws.com/models/onnx/ViT-B-32/visual.onnx
-!wget https://clip-as-service.s3.us-east-2.amazonaws.com/models/onnx/ViT-B-32/textual.onnx
-```
-```python3
-onnx_model = clip_onnx(None)
-onnx_model.load_onnx(visual_path="visual.onnx",
-                     textual_path="textual.onnx",
-                     logit_scale=100.0000) # model.logit_scale.exp()
-onnx_model.start_sessions(providers=["CPUExecutionProvider"])
+```bash
+cd clip_trt
+python clip-inference.py >result.log 2>&1
 ```
 
-## Model Zoo
-Models of the original CLIP can be found on this [page](https://github.com/jina-ai/clip-as-service/blob/main/server/clip_server/model/clip_onnx.py).\
-They are not part of this library but should work correctly.
+### Running Modified CLIP-TensorRT (Using Plugin)
 
-## If something doesn't work
+1. Compile the handwritten TextualLayerNorm plugin and VisualLayerNorm plugin, then test the correctness of both plugins.
+
+```bash
+cd LayerNormPlugin
+make clean
+make
+python testLayerNormPlugin.py >test.log 2>&1
+```
+
+2. Build the engine and inference.
+
+```bash
+cd clip_trt
+python clip-inference-plugin.py >result-plugin.log 2>&1
+```
+
+## If something doesn't work when export onnx
+
 It happens that onnx does not convert the model the first time, in these cases it is worth trying to run it again.
 
 If it doesn't help, it makes sense to change the export settings.
 
 Model export options in onnx looks like this:
+
 ```python3
 DEFAULT_EXPORT = dict(input_names=['input'], output_names=['output'],
                       export_params=True, verbose=False, opset_version=12,
@@ -96,6 +108,7 @@ DEFAULT_EXPORT = dict(input_names=['input'], output_names=['output'],
 ```
 
 You can change them pretty easily.
+
 ```python3
 from clip_onnx.utils import DEFAULT_EXPORT
 
@@ -103,6 +116,7 @@ DEFAULT_EXPORT["opset_version"] = 15
 ```
 
 Alternative option (change only visual or textual):
+
 ```python3
 from clip_onnx import clip_onnx
 from clip_onnx.utils import DEFAULT_EXPORT
@@ -123,8 +137,53 @@ onnx_model.convert2onnx(dummy_input_image, dummy_input_text, verbose=True,
                         textual_export_params=textual_export_params)
 ```
 
-## Best practices
-See [benchmark.md](https://github.com/Lednik7/CLIP-ONNX/tree/main/benchmark.md)
-## Examples
-See [examples folder](https://github.com/Lednik7/CLIP-ONNX/tree/main/examples) for more details \
-Some parts of the code were taken from the [post](https://twitter.com/apeoffire/status/1478493291008172038). Thank you [neverix](https://github.com/neverix) for this notebook.
+## Additional Information
+
+Introduces some of the uses of trtexec and poly for model export and performance verification
+
+### 1. Using trtexec
+
+Export engine by using trtexec.
+
+```bash
+trtexec --onnx=../clip_textual.onnx \
+        --memPoolSize=workspace:2048 \
+        --saveEngine=./engines/clip_textual_trt.engine \
+        --profilingVerbosity=detailed \
+        --dumpOutput \
+        --dumpProfile \
+        --dumpLayerInfo \
+        --exportOutput=./build/log/build_output_textual.log \
+        --exportProfile=./build/log/build_profile_textual.log \
+        --exportLayerInfo=./build/log/build_layer_info_textual.log \
+        --warmUp=200 \
+        --iterations=50 \
+        --verbose \
+        > ./build/log/result_trt_build_textual.log
+```
+
+### 2. Using polygraphy
+
+Export engine by using polygraphy.
+
+```bash
+polygraphy run ../clip_textual.onnx \
+    --trt \
+    --save-engine ./engines/clip_textual_poly.plan \
+    --save-timing-cache ./engines/clip_textual_poly.cache \
+    --save-tactics ./engines/clip_textual_poly_tactics.json \
+    --trt-min-shapes 'input:[1,77]' \
+    --trt-opt-shapes 'input:[4,77]' \
+    --trt-max-shapes 'input:[16,77]' \
+    --fp16 \
+    --pool-limit workspace:1G \
+    --builder-optimization-level 5 \
+    --max-aux-streams 4 \
+    --input-shapes   'input:[4,77]' \
+    --verbose \
+    > ./build/log/result-poly-01.log 2>&1
+```
+
+## ACKNOWLEDGE
+
+The code for exporting the ONNX model is sourced from this repository[CLIP-ONNX](https://github.com/Lednik7/CLIP-ONNX), and we are very grateful for the support it has provided to our work.
