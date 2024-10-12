@@ -184,6 +184,23 @@ polygraphy run ../clip_textual.onnx \
     > ./build/log/result-poly-01.log 2>&1
 ```
 
+Compare the output of each layer between Onnxruntime and TensorRT
+
+```bash
+polygraphy run ../clip_textual.onnx \
+    --onnxrt --trt \
+    --save-engine=./engines/clip_textual_poly.plan \
+    --onnx-outputs mark all \
+    --trt-outputs mark all \
+    --trt-min-shapes 'input:[1,77]' \
+    --trt-opt-shapes 'input:[4,77]' \
+    --trt-max-shapes 'input:[16,77]' \
+    --input-shapes   'input:[4,77]' \
+    --atol 1e-3 --rtol 1e-3 \
+    --verbose \
+    > ./build/log/result-poly-3.log 2>&1
+```
+
 ## ACKNOWLEDGE
 
 The code for exporting the ONNX model is sourced from this repository[CLIP-ONNX](https://github.com/Lednik7/CLIP-ONNX), and we are very grateful for the support it has provided to our work.
