@@ -1,0 +1,2 @@
+onnxruntime>=1.11.1
+onnx>=1.11.0
